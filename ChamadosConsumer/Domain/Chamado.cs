@@ -1,4 +1,4 @@
-namespace ChamadosConsumer;
+namespace ChamadosConsumer.Domain;
 
 public class Chamado
 {

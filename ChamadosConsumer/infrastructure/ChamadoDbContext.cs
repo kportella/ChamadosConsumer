@@ -1,6 +1,7 @@
+using ChamadosConsumer.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace ChamadosConsumer;
+namespace ChamadosConsumer.Infrastructure;
 
 public class ChamadoDbContext : DbContext
 {
@@ -14,10 +15,4 @@ public class ChamadoDbContext : DbContext
     {
         optionsBuilder.UseSqlite("Data Source=database.db");
     }
-
-    // protected override void OnModelCreating(ModelBuilder modelBuilder)
-    // {
-    //     modelBuilder.ApplyConfiguration(new ChamadoConfiguration());
-    //     base.OnModelCreating(modelBuilder);
-    // }
 }

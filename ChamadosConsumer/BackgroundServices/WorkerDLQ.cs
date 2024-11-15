@@ -1,9 +1,11 @@
 using System.Text;
 using System.Text.Json;
+using ChamadosConsumer.Domain;
+using ChamadosConsumer.Infrastructure;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
-namespace ChamadosConsumer;
+namespace ChamadosConsumer.BackgroundServices;
 
 public class WorkerDLQ : BackgroundService
 {
@@ -39,7 +41,7 @@ public class WorkerDLQ : BackgroundService
         consumer.ReceivedAsync += async (sender, ea) =>
         {
             using var scope = _serviceProvider.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ChamadoDbContext>();
+            var dataAccess = scope.ServiceProvider.GetRequiredService<ChamadoDataAccess>();
 
             try
             {
@@ -51,8 +53,7 @@ public class WorkerDLQ : BackgroundService
                     chamado.Titulo, chamado.Descricao, chamado.DataAbertura);
 
                 // Tentar salvar o chamado no banco de dados novamente
-                await dbContext.Chamados.AddAsync(chamado, stoppingToken);
-                await dbContext.SaveChangesAsync(stoppingToken);
+                await dataAccess.GravarChamado(chamado, stoppingToken);
 
                 _logger.LogInformation("Chamado da DLQ salvo no banco de dados com sucesso.");
 

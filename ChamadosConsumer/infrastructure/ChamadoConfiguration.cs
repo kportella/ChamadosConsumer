@@ -1,7 +1,8 @@
+using ChamadosConsumer.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace ChamadosConsumer;
+namespace ChamadosConsumer.Infrastructure;
 
 public class ChamadoConfiguration : IEntityTypeConfiguration<Chamado>
 {
