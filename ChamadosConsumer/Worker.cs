@@ -18,44 +18,54 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
+        _logger.LogInformation("Worker iniciado, aguardando mensagens.");
+
+        var factory = new ConnectionFactory { HostName = "localhost" };
+
+        await using var connection = await factory.CreateConnectionAsync(stoppingToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
+
+        await channel.QueueDeclareAsync(
+            queue: "fila_chamados",
+            durable: false,
+            exclusive: false,
+            autoDelete: false,
+            arguments: null,
+            cancellationToken: stoppingToken);
+
+        var consumer = new AsyncEventingBasicConsumer(channel);
+
+        consumer.ReceivedAsync += async (sender, ea) =>
         {
-            Console.WriteLine(" [*] Waiting for messages.");
-            var factory = new ConnectionFactory { HostName = "localhost" };
-            await using var connection = await factory.CreateConnectionAsync(stoppingToken);
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
             using var scope = _serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<ChamadoDbContext>();
 
-            await dbContext.Database.MigrateAsync(stoppingToken);
-
-            await channel.QueueDeclareAsync(queue: "fila_chamados", durable: false, exclusive: false, autoDelete: false,
-                arguments: null, cancellationToken: stoppingToken);
-
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
-                var consumer = new AsyncEventingBasicConsumer(channel);
-                consumer.ReceivedAsync += (model, ea) =>
-                {
-                    var body = ea.Body.ToArray();
-                    var message = Encoding.UTF8.GetString(body);
-                    var chamado = JsonSerializer.Deserialize<Chamado>(message);
-                    Console.WriteLine(" [x] Recebido Chamado ID: {0}, Descrição: {1}, Data: {2}",
-                        chamado.Titulo, chamado.Descricao, chamado.DataAbertura);
+                var body = ea.Body.ToArray();
+                var message = Encoding.UTF8.GetString(body);
+                var chamado = JsonSerializer.Deserialize<Chamado>(message);
 
-                    dbContext.Chamados.AddAsync(chamado, stoppingToken);
-                    dbContext.SaveChangesAsync(stoppingToken);
+                _logger.LogInformation("Mensagem recebida: Título={Titulo}, Descrição={Descricao}, Data={Data}",
+                    chamado.Titulo, chamado.Descricao, chamado.DataAbertura);
 
-                    return Task.CompletedTask;
-                };
+                await dbContext.Chamados.AddAsync(chamado, stoppingToken);
+                await dbContext.SaveChangesAsync(stoppingToken);
 
-                await channel.BasicConsumeAsync("fila_chamados", autoAck: true, consumer: consumer,
-                    cancellationToken: stoppingToken);
+                _logger.LogInformation("Chamado salvo no banco de dados com sucesso.");
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Erro no Background Service: {ex.Message}");
-        }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao processar a mensagem.");
+            }
+        };
+
+        await channel.BasicConsumeAsync(
+            queue: "fila_chamados",
+            autoAck: true,
+            consumer: consumer, cancellationToken: stoppingToken);
+
+        // Aguarda o cancelamento do token para encerrar o serviço
+        await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 }
