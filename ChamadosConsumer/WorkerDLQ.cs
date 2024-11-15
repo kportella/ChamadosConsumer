@@ -1,16 +1,16 @@
 using System.Text;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
 namespace ChamadosConsumer;
 
-public class Worker : BackgroundService
+public class WorkerDLQ : BackgroundService
 {
-    private readonly ILogger<Worker> _logger;
+    private readonly ILogger<WorkerDLQ> _logger;
     private readonly IServiceProvider _serviceProvider;
-    public Worker(ILogger<Worker> logger, IServiceProvider serviceProvider)
+
+    public WorkerDLQ(ILogger<WorkerDLQ> logger, IServiceProvider serviceProvider)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
@@ -18,53 +18,20 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Worker iniciado, aguardando mensagens.");
+        _logger.LogInformation("DLQWorker iniciado, aguardando mensagens na DLQ.");
 
         var factory = new ConnectionFactory { HostName = "localhost" };
 
         await using var connection = await factory.CreateConnectionAsync(stoppingToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
 
-        // Declarar a Dead Letter Exchange (DLX)
-        await channel.ExchangeDeclareAsync(
-            exchange: "dlx_chamados",
-            type: ExchangeType.Fanout,
-            durable: true,
-            autoDelete: false,
-            arguments: null,
-            cancellationToken: stoppingToken);
-
-        // Declarar a Dead Letter Queue (DLQ)
+        // Declarar a DLQ caso ainda não exista
         await channel.QueueDeclareAsync(
             queue: "dlq_chamados",
             durable: true,
             exclusive: false,
             autoDelete: false,
             arguments: null,
-            cancellationToken: stoppingToken);
-
-        // Vincular a DLQ à DLX
-        await channel.QueueBindAsync(
-            queue: "dlq_chamados",
-            exchange: "dlx_chamados",
-            routingKey: "",
-            arguments: null,
-            cancellationToken: stoppingToken);
-
-        // Configurar argumentos para a fila principal
-        var args = new Dictionary<string, object>
-        {
-            { "x-dead-letter-exchange", "dlx_chamados" }
-            // Opcional: { "x-message-ttl", 30000 } // TTL de 30 segundos
-        };
-
-        // Declarar a fila principal com DLX
-        await channel.QueueDeclareAsync(
-            queue: "fila_chamados",
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            arguments: args,
             cancellationToken: stoppingToken);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
@@ -80,32 +47,30 @@ public class Worker : BackgroundService
                 var message = Encoding.UTF8.GetString(body);
                 var chamado = JsonSerializer.Deserialize<Chamado>(message);
 
-                _logger.LogInformation("Mensagem recebida: Título={Titulo}, Descrição={Descricao}, Data={Data}",
+                _logger.LogInformation("Mensagem recebida na DLQ: Título={Titulo}, Descrição={Descricao}, Data={Data}",
                     chamado.Titulo, chamado.Descricao, chamado.DataAbertura);
 
-                if (chamado.Titulo == "DLQ")
-                    throw new Exception();
-                
+                // Tentar salvar o chamado no banco de dados novamente
                 await dbContext.Chamados.AddAsync(chamado, stoppingToken);
                 await dbContext.SaveChangesAsync(stoppingToken);
 
-                _logger.LogInformation("Chamado salvo no banco de dados com sucesso.");
+                _logger.LogInformation("Chamado da DLQ salvo no banco de dados com sucesso.");
 
                 // Confirma que a mensagem foi processada com sucesso
                 await channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao processar a mensagem.");
+                _logger.LogError(ex, "Erro ao processar a mensagem na DLQ.");
 
-                // Rejeita a mensagem e não a reencaminha para a fila principal
+                // Rejeita a mensagem e não a reencaminha para a fila
                 await channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: false, cancellationToken: stoppingToken);
             }
         };
 
-        // Consumir a fila com autoAck false
+        // Consumir a DLQ com autoAck false
         await channel.BasicConsumeAsync(
-            queue: "fila_chamados",
+            queue: "dlq_chamados",
             autoAck: false,
             consumer: consumer, cancellationToken: stoppingToken);
 
