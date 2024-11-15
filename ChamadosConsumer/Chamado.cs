@@ -1,8 +1,21 @@
 namespace ChamadosConsumer;
 
-public record Chamado(string Titulo, string Descricao, ETipoManutencao TipoManutencao, ECriticidade Criticidade, 
-    string Tecnico, DateTime DataAbertura, DateTime DataFechamento, EStatus Status, string Equipamento, 
-    string Localizacao, string Modelo);
+public class Chamado
+{
+    public int Id { get; set; }
+    public string Titulo { get; set; }
+    public string Descricao { get; set; }
+    public ETipoManutencao TipoManutencao { get; set; }
+    public ECriticidade Criticidade { get; set; }
+    public string Tecnico { get; set; }
+    public DateTime DataAbertura { get; set; }
+    public DateTime? DataFechamento { get; set; }
+    public EStatus Status { get; set; }
+    public string Equipamento { get; set; }
+    public string Localizacao { get; set; }
+    public string Modelo { get; set; }
+}
+
     
 public enum ETipoManutencao
 {
