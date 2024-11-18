@@ -1,5 +1,6 @@
 namespace ChamadosConsumer.Domain;
 
+// Objeto de chamado.
 public class Chamado
 {
     public int Id { get; set; }

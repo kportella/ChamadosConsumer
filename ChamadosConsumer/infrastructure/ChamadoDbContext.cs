@@ -5,14 +5,18 @@ namespace ChamadosConsumer.Infrastructure;
 
 public class ChamadoDbContext : DbContext
 {
-    public ChamadoDbContext(DbContextOptions<ChamadoDbContext> options)
+    private readonly IConfiguration _configuration;
+    
+    public ChamadoDbContext(DbContextOptions<ChamadoDbContext> options, IConfiguration configuration)
         : base(options)
     {
+        _configuration = configuration;
     }
     public DbSet<Chamado> Chamados { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseSqlite("Data Source=database.db");
+        // Configura connection string 
+        optionsBuilder.UseSqlite(_configuration.GetConnectionString("DefaultConnection"));
     }
 }
